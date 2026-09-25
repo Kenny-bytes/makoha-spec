@@ -1,0 +1,17 @@
+{
+  "docs_dir": "docs/spec",
+  "prompts_dir": "docpipe/prompts",
+  "templates_dir": "docpipe/templates",
+  "state_dir": ".docpipe",
+  "project_name": "M\u0101koha",
+  "system_name": "M\u0101koha platform",
+  "intended_purpose": "A build-ready specification set that a delivery team or coding agents with no access to the source repositories can build M\u0101koha from, tier by tier, and that can be exported as the regulator bundle for each tier.",
+  "id_pattern": "\\b[A-Z][A-Z0-9]{0,4}-\\d{2,3}\\b",
+  "requirements_syntax": "ears",
+  "coverage": {
+    "6": 5
+  },
+  "runner_interactive": "claude --append-system-prompt-file {prompt}",
+  "runner_headless": "claude -p --bare --append-system-prompt-file {prompt} --permission-mode acceptEdits --allowedTools Read,Edit,Write,Glob,Grep --output-format json {message}",
+  "open_marker": "{{TBD"
+}
