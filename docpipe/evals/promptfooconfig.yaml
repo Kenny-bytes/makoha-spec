@@ -1,0 +1,87 @@
+# docpipe eval pack — promptfoo
+# Run:  cd <repo> && npx promptfoo@latest eval -c docpipe/evals/promptfooconfig.yaml
+# Fixtures: evals/fixtures/<case>/ (see cases.md).
+
+description: docpipe phase-interview behaviour
+
+prompts:
+  - file://evals/assemble.sh
+
+providers:
+  - anthropic:messages:claude-sonnet-4-5
+
+defaultTest:
+  assert:
+    - type: not-contains
+      value: "Great question"
+    - type: javascript
+      value: "(output.match(/\\?/g) || []).length <= 1"
+
+tests:
+  - description: "T01 purpose first when unset"
+    vars: { fixture: evals/fixtures/idea-only, phase: 1, turn: "Begin phase 1." }
+    assert:
+      - { type: llm-rubric, value: "The response asks what the finished documentation set is for (its intended purpose) before proposing structure or drafting content, or records a purpose the idea explicitly states. It does not begin drafting sections." }
+
+  - description: "T02 outline-first, greenfield"
+    vars: { fixture: evals/fixtures/purpose-set, phase: 1, turn: "Begin phase 1." }
+    assert:
+      - { type: llm-rubric, value: "The response proposes an outline as headings only, each with one line saying what it will establish and what it derives from the idea, then asks exactly one question about adding, cutting or reordering. It does not write full section content and does not present a fixed template." }
+
+  - description: "T03 no re-asking — derive roles from PRD users"
+    vars: { fixture: evals/fixtures/prd-final, phase: 3, turn: "Begin phase 3." }
+    assert:
+      - { type: llm-rubric, value: "Proposes roles derived from the PRD's users, citing the PRD section or identifiers, and asks for confirmation. Does not ask who the users are." }
+
+  - description: "T04 conflict → change request"
+    vars: { fixture: evals/fixtures/prd-final, phase: 3, turn: "Actually the primary user is the practice nurse, not the GP." }
+    assert:
+      - { type: llm-rubric, value: "States once that this contradicts the finalised PRD (citing where), records a change request in the current document naming the PRD and the item, and does not claim to have edited the PRD." }
+
+  - description: "T05 unknown → TBD"
+    vars: { fixture: evals/fixtures/purpose-set, phase: 1, turn: "I don't know the baseline for that metric yet." }
+    assert:
+      - { type: icontains, value: "{{TBD" }
+      - { type: llm-rubric, value: "Writes a {{TBD: ...}} carrying the exact question, adds it to open questions, and moves to the next question without inventing a number." }
+
+  - description: "T06 user declines identifiers — none imposed"
+    vars: { fixture: evals/fixtures/purpose-set, phase: 1, turn: "No ID codes. Just clear headings; downstream can link to sections." }
+    assert:
+      - { type: not-icontains, value: "set id_pattern" }
+      - { type: llm-rubric, value: "Accepts the decision, leaves id_pattern unset, and proceeds with section-based references. Does not argue for or introduce an identifier scheme." }
+
+  - description: "T07 phase 5 derivation under EARS"
+    vars: { fixture: evals/fixtures/opscon-final, phase: 5, turn: "Begin phase 5." }
+    assert:
+      - type: javascript
+        value: |
+          const rows = output.split("\n").filter(l => /\bshall\b/i.test(l));
+          const ears = /(^|\|)\s*(The|When|While|If|Where)\b[^|]*\bshall\b/i;
+          return rows.length >= 3 && rows.every(r => ears.test(r));
+      - { type: llm-rubric, value: "Requirements are presented in batches of ten or fewer, grouped by scenario, each tracing to an OpsCon scenario/mode/expectation, with a request to confirm, correct or cut the batch." }
+
+  - description: "T08 compound → split"
+    vars: { fixture: evals/fixtures/opscon-final, phase: 5, turn: "Add: the system shall log the alert and email the GP." }
+    assert:
+      - { type: llm-rubric, value: "Produces two separate requirements, one obligation each." }
+
+  - description: "T09 validation failure → change request"
+    vars: { fixture: evals/fixtures/reqs-final, phase: 6, turn: "The latency test failed: 2 s is not achievable on the vendor API; we need 5 s." }
+    assert:
+      - { type: llm-rubric, value: "Marks modification required on the affected entry, raises a change request naming the TechSpec target (and/or the OpsCon expectation) with the new value, notes docpipe update will propagate, and does not edit the TechSpec directly." }
+
+  - description: "T10 refuses to finalise with undeferred TBDs"
+    vars: { fixture: evals/fixtures/prd-with-tbds, phase: 1, turn: "Finalise it." }
+    assert:
+      - { type: llm-rubric, value: "Lists remaining TBDs and asks whether each is deferred or answerable now; does not declare the document final." }
+
+  - description: "T11 'skip the questions'"
+    vars: { fixture: evals/fixtures/purpose-set, phase: 1, turn: "Skip the questions, just write the full PRD now." }
+    assert:
+      - { type: llm-rubric, value: "Drafts every section from upstream, marking anything not established upstream as proposed or {{TBD}}, then asks one question to confirm the highest-leverage proposed item. Does not invent users, metrics or constraints as if stated." }
+
+  - description: "T12 headless revise — minimal, structure kept"
+    vars: { fixture: evals/fixtures/prd-changed, phase: 3, mode: revise, turn: "Revise docs/spec/03-opscon.md against the upstream changes. Edit the file in place." }
+    assert:
+      - { type: not-icontains, value: "renumber" }
+      - { type: llm-rubric, value: "Summary reports only edits derived from the diff, keeps existing structure, raises {{TBD}} where undecidable, and states counts of updated/added/TBD." }

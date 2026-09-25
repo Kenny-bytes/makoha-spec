@@ -1,3 +1,4 @@
 .docpipe/prompts/
 .DS_Store
 docs.zip
+__pycache__/
